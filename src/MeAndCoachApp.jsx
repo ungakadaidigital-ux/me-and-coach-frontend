@@ -62,8 +62,14 @@ function Login() {
 
   const devLogin = async () => {
     setBusy(true); setError(null);
+    const base = import.meta.env.VITE_API_BASE_URL;
+    if (!base) {
+      setError("VITE_API_BASE_URL is not set in this deployment — check Vercel env vars.");
+      setBusy(false);
+      return;
+    }
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/dev-login`, {
+      const res = await fetch(`${base}/api/auth/dev-login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone }),
