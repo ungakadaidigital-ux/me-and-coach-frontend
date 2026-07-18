@@ -1,50 +1,54 @@
-import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient.js";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { authStore } from "../lib/authStore.js";
 
-function parseClaims(session) {
-  if (!session) return null;
-  const payload = JSON.parse(atob(session.access_token.split(".")[1]));
-  return {
-    userId: session.user.id,
-    academyId: payload.academy_id || null,
-    role: payload.role || null,
-    coachId: payload.coach_id || null,
-  };
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+async function raw(path, body) {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `Request failed: ${res.status}`);
+  return json;
 }
 
 /**
  * Returns { loading, session, claims, signInWithPhone, verifyOtp, signOut }.
- * claims is null until the coach's auth user has been linked
- * (see backend POST /api/auth/link-coach) AND the session token
- * has been refreshed at least once after that.
+ * On mount, tries to restore a session from a persisted refresh token
+ * so a page reload doesn't force re-login.
  */
 export function useSession() {
-  const [session, setSession] = useState(null);
+  const state = useSyncExternalStore(authStore.subscribe, authStore.getState);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    const { refreshToken, accessToken } = authStore.getState();
+    if (accessToken || !refreshToken) {
       setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
-    return () => sub.subscription.unsubscribe();
+      return;
+    }
+    raw("/api/auth/refresh", { refresh_token: refreshToken })
+      .then((session) => authStore.setSession(session))
+      .catch(() => authStore.clearSession())
+      .finally(() => setLoading(false));
   }, []);
 
-  const signInWithPhone = (phone) => supabase.auth.signInWithOtp({ phone });
+  const signInWithPhone = (phone) => raw("/api/auth/send-otp", { phone });
 
-  const verifyOtp = async (phone, token) => {
-    const { data, error } = await supabase.auth.verifyOtp({ phone, token, type: "sms" });
-    if (error) throw error;
-    return data.session;
+  const verifyOtp = async (phone, otp) => {
+    const session = await raw("/api/auth/verify-otp", { phone, otp });
+    authStore.setSession(session);
+    return session;
   };
 
-  const signOut = () => supabase.auth.signOut();
+  const signOut = () => authStore.clearSession();
 
   return {
     loading,
-    session,
-    claims: parseClaims(session),
+    session: state.accessToken ? state : null,
+    claims: state.claims,
     signInWithPhone,
     verifyOtp,
     signOut,
