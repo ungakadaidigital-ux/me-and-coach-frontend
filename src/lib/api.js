@@ -1,6 +1,12 @@
 import { authStore } from "./authStore.js";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+if (!BASE_URL) {
+  // Fails loudly at first use instead of silently building a relative
+  // URL that hits this frontend's own domain and returns an HTML 404 —
+  // which used to surface as a confusing "not valid JSON" error.
+  console.error("VITE_API_BASE_URL is not set — check your Vercel/build environment variables.");
+}
 
 async function tryRefresh() {
   const { refreshToken } = authStore.getState();
@@ -49,4 +55,3 @@ export const api = {
   post: (path, body) => request(path, { method: "POST", body: JSON.stringify(body) }),
   patch: (path, body) => request(path, { method: "PATCH", body: JSON.stringify(body) }),
 };
-
