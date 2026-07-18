@@ -12,7 +12,6 @@ import { useVerticalConfigs } from "./hooks/useVerticalConfigs.js";
 import { useAttendance } from "./hooks/useAttendance.js";
 import { usePayments } from "./hooks/usePayments.js";
 import { useAttendanceStats } from "./hooks/useAttendanceStats.js";
-import { api } from "./lib/api.js";
 
 const C = {
   ink: "#131A2B", inkSoft: "#5B6478", chalk: "#FAF7F1", chalkDeep: "#F1EBDD",
@@ -58,17 +57,23 @@ function Login() {
     setBusy(true); setError(null);
     try {
       await verifyOtp(phone, otp);
-      // Link this auth user to their pre-invited coaches row, then
-      // refresh the session so the JWT picks up academy_id/role.
-      await api.post("/api/auth/link-coach", { phone });
-      await supabaseRefresh();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
 
-  async function supabaseRefresh() {
-    const { supabase } = await import("./lib/supabaseClient.js");
-    await supabase.auth.refreshSession();
-  }
+  const devLogin = async () => {
+    setBusy(true); setError(null);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/dev-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Dev login failed");
+      const { authStore } = await import("./lib/authStore.js");
+      authStore.setSession(json);
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
 
   return (
     <div className="w-full min-h-screen flex items-center justify-center" style={{ background: C.chalk }}>
@@ -80,6 +85,12 @@ function Login() {
               className="w-full rounded-lg px-3 py-2 text-sm mb-3" style={{ border: `1px solid ${C.line}` }} />
             <button onClick={sendOtp} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold"
               style={{ background: C.marigold, color: C.ink }}>OTP அனுப்பு</button>
+            {import.meta.env.VITE_DEV_LOGIN === "true" && (
+              <button onClick={devLogin} disabled={busy || !phone} className="w-full py-2 rounded-xl text-xs font-semibold mt-2"
+                style={{ background: C.chalkDeep, color: C.inkSoft, border: `1px dashed ${C.line}` }}>
+                ⚠ Dev Login (skip OTP)
+              </button>
+            )}
           </>
         ) : (
           <>
