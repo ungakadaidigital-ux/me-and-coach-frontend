@@ -31,7 +31,10 @@ export function useSession() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const signInWithPhone = (phone) => supabase.auth.signInWithOtp({ phone });
+  const signInWithPhone = async (phone) => {
+    const { error } = await supabase.auth.signInWithOtp({ phone });
+    if (error) throw error; // supabase-js resolves with {error}, it doesn't throw — surface it ourselves
+  };
 
   const verifyOtp = async (phone, token) => {
     const { data, error } = await supabase.auth.verifyOtp({ phone, token, type: "sms" });
@@ -50,4 +53,3 @@ export function useSession() {
     signOut,
   };
 }
-
