@@ -280,8 +280,9 @@ function Attendance() {
 
   const batch = todays.find((b) => b.id === batchId);
   const { students: roster } = useStudents({ batchId: batchId || undefined });
-  const { marks, mark, syncing, syncError, retrySync } = useAttendance(batchId);
+  const { marks, mark, pendingCount, syncing, syncError, retrySync } = useAttendance(batchId);
   const presentCount = Object.values(marks).filter((v) => v === "present").length;
+  const pendingOffline = !syncing && !syncError && pendingCount > 0;
 
   if (!batch) return <div className="text-sm text-center py-10" style={{ color: C.inkSoft }}>இன்று வகுப்புகள் இல்லை</div>;
 
@@ -302,10 +303,12 @@ function Attendance() {
             <div className="text-white text-sm font-semibold">{batch.name}</div>
             <div className="text-xs" style={{ color: "#AEB6C6" }}>{presentCount}/{roster.length} வந்திருக்காங்க</div>
           </div>
-          <button onClick={syncError ? retrySync : undefined}
+          <button onClick={syncError || pendingOffline ? retrySync : undefined}
             className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
-            style={syncError ? { background: C.claySoft, color: C.clay } : { background: syncing ? "#3A3220" : C.greenSoft, color: syncing ? C.marigold : C.green }}>
-            {syncError ? <><WifiOff size={12} /> மீண்டும் முயற்சி</> : <><Wifi size={12} /> {syncing ? "சேமிக்கிறது…" : "ஒத்திசைவு முடிந்தது"}</>}
+            style={syncError || pendingOffline ? { background: C.claySoft, color: C.clay } : { background: syncing ? "#3A3220" : C.greenSoft, color: syncing ? C.marigold : C.green }}>
+            {syncError ? <><WifiOff size={12} /> மீண்டும் முயற்சி</> :
+             pendingOffline ? <><WifiOff size={12} /> {pendingCount} பென்டிங்</> :
+             <><Wifi size={12} /> {syncing ? "சேமிக்கிறது…" : "ஒத்திசைவு முடிந்தது"}</>}
           </button>
         </div>
       </div>
