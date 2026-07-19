@@ -1,51 +1,91 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
+import { enqueue, getQueuedForBatch, removeFromQueue } from "../lib/offlineQueue.js";
 
-/**
- * MVP sync queue: in-memory only. True offline support (surviving
- * an app kill/reload while offline) needs a persisted queue —
- * SQLite on mobile, IndexedDB on web — noted as a follow-up, not
- * built here. This covers "flaky network, app stays open."
- */
 export function useAttendance(batchId) {
-  const [marks, setMarks] = useState({}); // student_id -> 'present' | 'absent'
+  const [marks, setMarks] = useState({});
+  const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
-  const queueRef = useRef([]);
+  const flushingRef = useRef(false);
   const debounceRef = useRef(null);
 
+  const refreshPendingCount = useCallback(async () => {
+    const queued = await getQueuedForBatch(batchId);
+    setPendingCount(queued.length);
+    return queued;
+  }, [batchId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const queued = await getQueuedForBatch(batchId);
+      if (cancelled) return;
+      if (queued.length > 0) {
+        setMarks((m) => {
+          const next = { ...m };
+          for (const item of queued) next[item.student_id] = item.status;
+          return next;
+        });
+        setPendingCount(queued.length);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [batchId]);
+
   const flush = useCallback(async () => {
-    if (queueRef.current.length === 0) return;
-    const batch = queueRef.current;
-    queueRef.current = [];
+    if (flushingRef.current) return;
+    const queued = await getQueuedForBatch(batchId);
+    if (queued.length === 0) return;
+
+    flushingRef.current = true;
     setSyncing(true);
     setSyncError(null);
     try {
-      await api.post("/api/attendance/bulk", batch);
+      await api.post(
+        "/api/attendance/bulk",
+        queued.map(({ id, batch_id, student_id, status, device_marked_at }) => ({
+          id,
+          batch_id,
+          student_id,
+          status,
+          device_marked_at,
+        }))
+      );
+      await removeFromQueue(queued.map((item) => item.id));
+      await refreshPendingCount();
     } catch (e) {
       setSyncError(e.message);
-      queueRef.current = [...batch, ...queueRef.current]; // retry on next mark or manual retry
     } finally {
       setSyncing(false);
+      flushingRef.current = false;
     }
-  }, []);
+  }, [batchId, refreshPendingCount]);
+
+  useEffect(() => {
+    const handleOnline = () => flush();
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [flush]);
 
   const mark = useCallback(
-    (studentId, status) => {
+    async (studentId, status) => {
       setMarks((m) => ({ ...m, [studentId]: status }));
-      queueRef.current.push({
+      await enqueue({
         id: crypto.randomUUID(),
         batch_id: batchId,
         student_id: studentId,
         status,
         device_marked_at: new Date().toISOString(),
       });
+      await refreshPendingCount();
       clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(flush, 1000);
     },
-    [batchId, flush]
+    [batchId, flush, refreshPendingCount]
   );
 
-  return { marks, mark, syncing, syncError, retrySync: flush };
+  return { marks, mark, pendingCount, syncing, syncError, retrySync: flush };
 }
-
