@@ -1,36 +1,24 @@
-# Me & Coach — Frontend (Week 2)
-
-Same visual design as the prototype, now wired to the real API and
-Supabase auth instead of mock arrays.
-
-## Setup
-1. `npm install`
-2. Copy `.env.example` → `.env`, point `VITE_API_BASE_URL` at your
-   deployed (or local) backend, fill in Supabase URL/anon key
-3. `npm run dev`
-
-## What changed vs. the prototype
-- `STUDENTS`/`SCHEDULE` mock arrays → `useStudents`/`useBatches` hooks
-  hitting the real Express API
-- Custom field labels (belt/position/grade) → fetched per-academy
-  from `useVerticalConfigs`, not hardcoded. This is the actual
-  config-driven behavior the prototype's caption claimed but didn't
-  yet implement.
-- Attendance marking → `useAttendance` queues marks and bulk-syncs;
-  a synced "absent" mark auto-fires the WhatsApp alert (backend-side)
-- Payments "send reminder" → real call to `/api/payments/:id/send-reminder`
-- Added a phone+OTP login screen (the prototype had none — it assumed
-  a logged-in state)
-
-## Known gaps (carried over from the backend README, plus new ones)
-- Attendance sync queue is in-memory only — survives a flaky network
-  while the app stays open, NOT an app kill/reload while offline.
-  Real offline support needs a persisted queue (IndexedDB on web,
-  SQLite if this becomes a React Native app per the original stack
-  choice) — deferred, not silently dropped.
-- Same-day-only attendance edit lock: still not enforced anywhere
-  (frontend or backend) — flagged twice now, worth doing before pilot.
-- No owner UI yet for defining `vertical_configs` — the backend route
-  exists (`POST /api/vertical-configs`), but there's no screen to use
-  it. Right now an academy's field config has to be inserted directly
-  via SQL/Supabase Studio.
+Me & Coach — Frontend
+React + Vite + Tailwind, built to the "Me &" family Design & Product Principles. Deploy this after the backend (see backend/README.md for the required SQL → Backend → Frontend order).
+Setup
+npm install
+Copy .env.example to .env, fill in VITE_API_URL and Supabase keys.
+npm run dev
+Where each principle lives in the code
+Principle
+File(s)
+#1 Phone+password auth, no email/OTP
+src/pages/Login.jsx, src/lib/api.js (login())
+#2 Uniform box sizing, no calendar picker, numeric keyboards, dropdowns for constrained values
+src/components/DateInput.jsx, src/components/SegmentedToggle.jsx, src/pages/StudentDetail.jsx (status dropdown)
+#3 Solid colourful stat cards, paper-style list rows, dashed empty state
+src/components/StatCard.jsx, src/components/EmptyState.jsx, src/pages/Dashboard.jsx
+#4 Tamil-first nav with English subtitle
+src/components/TopBar.jsx, src/components/BottomNav.jsx
+#5 Respect real-world notation / auto-fill
+src/pages/Attendance.jsx (batch roster auto-loaded from schedule, no re-typing)
+#6 Editable records with "Edited" transparency note
+src/components/EditedBadge.jsx, used in StudentDetail.jsx and Payments.jsx
+Notes
+Data reads/writes all go through the backend API (src/lib/api.js), not directly through the Supabase client, so RLS scoping and edit-tracking stay centralized in one place.
+src/lib/offlineQueue.js uses localStorage for the attendance queue. This is fine here — this is a real, deployed app the coach installs to their phone, not a live in-chat preview, so browser storage is the correct tool for offline queuing.
