@@ -1,64 +1,33 @@
-/**
- * Generic IndexedDB-backed offline queue.
- */
+// Attendance marked while offline is queued locally, then flushed to
+// /api/attendance/bulk once the browser reports it's back online.
+// (This is a real deployed PWA-style app — not a live in-chat artifact
+// preview — so localStorage is the right, supported tool here.)
+import { api } from "./api";
 
-const DB_NAME = "me-and-coach-offline";
-const DB_VERSION = 1;
-const STORE = "attendance_queue";
+const KEY = "meandcoach_attendance_queue";
 
-let dbPromise = null;
-
-function openDB() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-  return dbPromise;
+export function queueAttendance(record) {
+  const queue = readQueue();
+  queue.push(record);
+  localStorage.setItem(KEY, JSON.stringify(queue));
 }
 
-async function withStore(mode, fn) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, mode);
-    const store = tx.objectStore(STORE);
-    const result = fn(store);
-    tx.oncomplete = () => resolve(result);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  });
+function readQueue() {
+  try {
+    return JSON.parse(localStorage.getItem(KEY) || "[]");
+  } catch {
+    return [];
+  }
 }
 
-export async function enqueue(item) {
-  await withStore("readwrite", (store) => store.put(item));
+export async function flushQueue() {
+  const queue = readQueue();
+  if (queue.length === 0) return { synced: 0 };
+  const result = await api.attendanceBulk(queue);
+  localStorage.removeItem(KEY);
+  return result;
 }
 
-export async function getAllQueued() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const store = tx.objectStore(STORE);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-export async function getQueuedForBatch(batchId) {
-  const all = await getAllQueued();
-  return all.filter((item) => item.batch_id === batchId);
-}
-
-export async function removeFromQueue(ids) {
-  if (ids.length === 0) return;
-  await withStore("readwrite", (store) => {
-    ids.forEach((id) => store.delete(id));
-  });
+export function queueLength() {
+  return readQueue().length;
 }
