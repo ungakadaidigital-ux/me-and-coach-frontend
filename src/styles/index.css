@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Inter", "Noto Sans Tamil", sans-serif;
+  background: #EDE7DA;
+}
+
+/* Numeric-only fields (phone, amount, DD/MM/YYYY date parts) always use
+   the numeric keypad — Design & Product Principles #2. Applied via the
+   `.numeric-field` class rather than repeating inputMode/pattern everywhere. */
+.numeric-field {
+  font-variant-numeric: tabular-nums;
+}
